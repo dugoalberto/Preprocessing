@@ -2,7 +2,7 @@
 set -e
 
 PYTHON_EXEC="python3"
-HOME_DIR="/mnt/home/albertodugo/"
+HOME_DIR="/dss/dsshome1/03/di38wok"
 PROJECT_DIR="$HOME_DIR/Projects/Preproccessing"
 
 echo "Inizio del job..."
@@ -17,9 +17,9 @@ $PYTHON_EXEC -m pip install --user -e .
 apt-get update && apt-get install -y tar
 
 # ── Estrazione frames ────────────────────────────────────────────────────────
-TAR_PATH="/mnt/home/albertodugo/Projects/frames.tar"
+TAR_PATH="$PROJECT_DIR/frames.tar"
 DEST_DIR="/tmp/dataset"
-FINAL_DIR="$DEST_DIR/"
+FINAL_DIR="$DEST_DIR/frames"
 
 echo "=== Inizio processo ==="
 mkdir -p "$FINAL_DIR"
