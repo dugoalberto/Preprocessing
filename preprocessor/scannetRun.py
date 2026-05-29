@@ -31,8 +31,8 @@ def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result)
     feat_dir = os.path.join(save_folder, directory, 'features', encoder)
     os.makedirs(feat_dir, exist_ok=True)
     save_path = os.path.join(feat_dir, file_stem)
-    np.save(save_path + '_feats.npy',   feat_result['feats'])
-    np.save(save_path + '_seg_map.npy', feat_result['seg_maps'])
+    #np.save(save_path + '_feats.npy',   feat_result['feats'])
+    #np.save(save_path + '_seg_map.npy', feat_result['seg_maps'])
     np.save(save_path + '_feat_map.npy', feat_result['feat_map'])
 
 
