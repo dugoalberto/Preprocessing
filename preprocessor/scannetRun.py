@@ -15,7 +15,7 @@ from utils.CLIP import OpenCLIPNetworkConfig, OpenCLIPNetwork
 from utils.feature_extractor import FeatureExtractor
 from utils.sam import SAMProcessor
 
-PREPROCESS_DIR = "/mnt/home/albertodugo/Projects/Preproccessing/preprocessor/preprocess"
+PREPROCESS_DIR = "/tmp/dataset/frames"
 SENTINEL = None
 
 
