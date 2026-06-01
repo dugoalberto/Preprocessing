@@ -89,7 +89,9 @@ def gpu_worker(worker_id: int, device_id: int, queue: Queue, sam_ckpt_path: str,
     print(f"[Worker {worker_id}] Ready on {device}")
 
     while True:
-        item = queue.get()
+        print(f"[Worker {worker_id}] Aspetto un elemento dalla coda...")
+		item = queue.get()
+		print(f"[Worker {worker_id}] Elemento ricevuto!")
         if item is SENTINEL:
             save_queue.put(None)  # shutdown saver
             saver.join()
