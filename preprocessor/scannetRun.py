@@ -206,7 +206,7 @@ if __name__ == '__main__':
     parser.add_argument('--workers_per_gpu', type=int, default=1)
     args = parser.parse_args()
 
-    save_folder = "/dss/dsshome1/03/di38wok/dataset/preprocessed"
+    save_folder = "/tmp/dataset/frames"
     dataset_dir = "/tmp/dataset/frames"
     data_list = sorted(os.listdir(dataset_dir))
 
