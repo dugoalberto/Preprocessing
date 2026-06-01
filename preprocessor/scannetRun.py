@@ -46,7 +46,7 @@ def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> s
     if not os.path.exists(feat_dir):
         return None
 
-    npy_files = [f for f in os.listdir(feat_dir) if f.endswith("_feats.npy")]
+    npy_files = [f for f in os.listdir(feat_dir) if f.endswith("feat_map.npy")]
     if not npy_files:
         return None
 
@@ -59,13 +59,16 @@ def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> s
 
 
 def saver_thread(save_queue):
-    """Runs in background, drains save tasks without blocking the GPU worker."""
     while True:
         item = save_queue.get()
         if item is None:
             break
         save_fn, args = item
-        save_fn(*args)
+        try:
+            save_fn(*args)
+            print(f"[Saver] Saved OK: {args[2]}")  # file_stem
+        except Exception as e:
+            print(f"[Saver] ERROR: {e}", flush=True)
 
 
 def gpu_worker(worker_id: int, device_id: int, queue: Queue, sam_ckpt_path: str,
@@ -120,7 +123,7 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
     worker_count = len(queues)
     worker_idx = 0
 
-    for directory in tqdm(data_list, desc="Scenes"):
+    for directory in tqdm(data_list, desc="Scenes", ascii=True):
         img_folder = os.path.join(dataset_dir, directory, "iphone", "rgb")
         if not os.path.exists(img_folder):
             continue
@@ -152,10 +155,10 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
         new_w = new_h = None
         WARNED = False
         print(len(directory_data_list))
-        for file_name in tqdm(directory_data_list, desc=f"Reading {directory}"):
+        for file_name in tqdm(directory_data_list, desc=f"Reading {directory}", ascii=True):
             image = cv2.imread(os.path.join(img_folder, file_name))
             orig_h, orig_w = image.shape[:2]
-
+	    print("sto guardando immagine")
             if scale is None:
                 if args.resolution == -1:
                     if orig_h > 1080 and not WARNED:
@@ -173,9 +176,10 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
 
             image = cv2.resize(image, (new_w, new_h))
             file_stem = file_name.split('.')[0]
-
+	    print(f"Sto per inserire l'immagine {file_stem} nella coda...")
             queues[worker_idx % worker_count].put((directory, file_stem, image, new_w, new_h))
-            worker_idx += 1
+            print(f"Immagine {file_stem} inserita con successo!")
+	    worker_idx += 1
 
         for subdir in ["tiles", "SAM_vis", "SAM"]:
             path = os.path.join(PREPROCESS_DIR, directory, subdir)
@@ -193,20 +197,20 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_path', type=str, required=True)
     parser.add_argument('--resolution', type=int, default=-1)
     parser.add_argument('--sam_ckpt_path', type=str,
-                        default="/mnt/home/albertodugo/Projects/Preproccessing/ckpt/sam_vit_h_4b8939.pth")
+                        default="/dss/dsshome1/03/di38wok/Projects/Preproccessing/ckpt/sam_vit_h_4b8939.pth")
     parser.add_argument('--encoder', type=str, default="clip")
     parser.add_argument('--empty_bg', action='store_true', default=False)
     parser.add_argument('--num_gpus', type=int, default=1)
     parser.add_argument('--workers_per_gpu', type=int, default=1)
     args = parser.parse_args()
 
-    save_folder = "/tmp/dataset/frames"
+    save_folder = "/dss/dsshome1/03/di38wok/dataset/preprocessed"
     dataset_dir = "/tmp/dataset/frames"
     data_list = sorted(os.listdir(dataset_dir))
 
     print(f"Launching with {args.num_gpus} GPU(s), {args.workers_per_gpu} worker(s) per GPU")
 
-    queue_maxsize = 64
+    queue_maxsize = 8
     queues = [Queue(maxsize=queue_maxsize)
               for _ in range(args.num_gpus * args.workers_per_gpu)]
 
