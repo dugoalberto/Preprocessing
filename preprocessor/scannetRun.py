@@ -158,7 +158,7 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
         for file_name in tqdm(directory_data_list, desc=f"Reading {directory}", ascii=True):
             image = cv2.imread(os.path.join(img_folder, file_name))
             orig_h, orig_w = image.shape[:2]
-	    print("sto guardando immagine")
+	    	print("sto guardando immagine")
             if scale is None:
                 if args.resolution == -1:
                     if orig_h > 1080 and not WARNED:
@@ -176,7 +176,7 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
 
             image = cv2.resize(image, (new_w, new_h))
             file_stem = file_name.split('.')[0]
-	    print(f"Sto per inserire l'immagine {file_stem} nella coda...")
+	    	print(f"Sto per inserire l'immagine {file_stem} nella coda...")
             queues[worker_idx % worker_count].put((directory, file_stem, image, new_w, new_h))
             print(f"Immagine {file_stem} inserita con successo!")
 	    worker_idx += 1
