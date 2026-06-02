@@ -89,7 +89,7 @@ def gpu_worker(worker_id: int, device_id: int, queue: Queue, sam_ckpt_path: str,
     print(f"[Worker {worker_id}] Ready on {device}")
 
     while True:
-		item = queue.get()
+        item = queue.get()
         if item is SENTINEL:
             save_queue.put(None)  # shutdown saver
             saver.join()
@@ -176,7 +176,7 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
             image = cv2.resize(image, (new_w, new_h))
             file_stem = file_name.split('.')[0]
             queues[worker_idx % worker_count].put((directory, file_stem, image, new_w, new_h))
-	    worker_idx += 1
+        worker_idx += 1
 
         for subdir in ["tiles", "SAM_vis", "SAM"]:
             path = os.path.join(PREPROCESS_DIR, directory, subdir)
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     parser.add_argument('--workers_per_gpu', type=int, default=1)
     args = parser.parse_args()
 
-    save_folder = "/tmp/dataset/frames"
+    save_folder = "/dss/dsshome1/03/di38wok/dataset/preprocessed"
     dataset_dir = "/tmp/dataset/frames"
     data_list = sorted(os.listdir(dataset_dir))
 
