@@ -47,6 +47,7 @@ else
     fi
 fi
 
+rm -r "$FINAL_DIR"/0*/
 # Cerca automaticamente la directory reale dei frame
 FRAMES_DIR=$(find "$DEST_DIR" -type d -name "frames" | head -n 1)
 
