@@ -2,7 +2,7 @@
 set -e
 
 PYTHON_EXEC="python3"
-HOME_DIR="/mnt/home/albertodugo"
+HOME_DIR="/dss/dsshome1/03/di38wok"
 PROJECT_DIR="$HOME_DIR/Projects/Preproccessing"
 SKIP_EXTRACTION=false
 
@@ -61,6 +61,6 @@ echo "Frames trovati in: $FRAMES_DIR"
 cd "$PROJECT_DIR/preprocessor"
 
 echo "Avvio scannetRun.py con dataset: $FRAMES_DIR"
-$PYTHON_EXEC scannetRun.py --dataset_path="$FRAMES_DIR" --resolution 256
+$PYTHON_EXEC scannetRun.py --dataset_path="$FRAMES_DIR" --resolution 256 --num_gpus 4 --workers_per_gpu 8
 
 echo "Job completato!"
