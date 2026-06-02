@@ -91,15 +91,15 @@ class FeatureExtractor:
 
                 # DEBUG 4: controlla dtype di feat
 
-                #img_embed = feat.detach().cpu()
+                img_embed = feat.detach().cpu()
                 feature_map, valid_mask = self.model.get_feature_map(seg_map.to("cuda"), feat.to("cuda"))
 
 
             return {
-                #'feats': img_embed.cpu().numpy(),
-                #'seg_maps': seg_maps,
-                'feat_map': {'feat_map': feature_map.cpu().numpy(),
-                             'valid_mask': valid_mask.cpu().numpy()}
+                'feats': img_embed.cpu().numpy(),
+                'seg_maps': seg_maps,
+                #'feat_map': {'feat_map': feature_map.cpu().numpy(),
+                             #'valid_mask': valid_mask.cpu().numpy()}
             }
 
         except Exception as e:

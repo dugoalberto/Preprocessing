@@ -31,9 +31,9 @@ def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result)
     feat_dir = os.path.join(save_folder, directory, 'features', encoder)
     os.makedirs(feat_dir, exist_ok=True)
     save_path = os.path.join(feat_dir, file_stem)
-    #np.save(save_path + '_feats.npy',   feat_result['feats'])
-    #np.save(save_path + '_seg_map.npy', feat_result['seg_maps'])
-    np.save(save_path + '_feat_map.npy', feat_result['feat_map'])
+    np.save(save_path + '_feats.npy',   feat_result['feats'])
+    np.save(save_path + '_seg_map.npy', feat_result['seg_maps'])
+    #np.save(save_path + '_feat_map.npy', feat_result['feat_map'])
 
 
 def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> str | None:
@@ -53,8 +53,8 @@ def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> s
     # Sort by natural order and take the last one
     npy_files.sort(key=natural_sort_key)
     last_file = npy_files[-1]
-    # Strip "_feats.npy" suffix to recover the original stem
-    stem = last_file[: -len("_feats.npy")]
+    # Strip ".npy" suffix to recover the original stem
+    stem = last_file[: -len(".npy")]
     return stem
 
 
