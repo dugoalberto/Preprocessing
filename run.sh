@@ -18,7 +18,7 @@ echo "Inizio del job..."
 echo "Uso l'ambiente Python: $PYTHON_EXEC"
 $PYTHON_EXEC --version
 $PYTHON_EXEC -m pip install huggingface_hub
-export HF_TOKEN=".."
+export HF_TOKEN="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"
 
 $PYTHON_EXEC -m pip install --user open-clip-torch
 

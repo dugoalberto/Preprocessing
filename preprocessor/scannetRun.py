@@ -42,10 +42,10 @@ def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result)
 
 
 REPO_ID = "dugoalberto/Scannet_Clip"
-api = HfApi(token="..")
+api = HfApi(token="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")
 
 def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result):
-    """Pure I/O, runs in saver thread. Salva su disco e fa l'upload su Hugging Face."""
+    """Pure I/O, runs in saver thread. Salva solo su disco."""
 
     sam_path = os.path.join(save_folder, directory, 'SAM', file_stem + '.npy')
     os.makedirs(os.path.dirname(sam_path), exist_ok=True)
@@ -55,51 +55,8 @@ def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result)
     os.makedirs(feat_dir, exist_ok=True)
     save_path = os.path.join(feat_dir, file_stem)
 
-    feats_file = save_path + '_feats.npy'
-    seg_map_file = save_path + '_seg_map.npy'
-
-    np.save(feats_file, feat_result['feats'])
-    np.save(seg_map_file, feat_result['seg_maps'])
-
-    repo_sam_path = f"{directory}/SAM/{file_stem}.npy"
-    repo_feats_path = f"{directory}/features/{encoder}/{file_stem}_feats.npy"
-    repo_seg_maps_path = f"{directory}/features/{encoder}/{file_stem}_seg_map.npy"
-
-    try:
-        # Carica il file SAM
-        api.upload_file(
-            path_or_fileobj=sam_path,
-            path_in_repo=repo_sam_path,
-            repo_id=REPO_ID,
-            repo_type="dataset",
-            silent=True
-        )
-        # Carica il file Feats
-        api.upload_file(
-            path_or_fileobj=feats_file,
-            path_in_repo=repo_feats_path,
-            repo_id=REPO_ID,
-            repo_type="dataset",
-            silent=True
-        )
-        api.upload_file(
-            path_or_fileobj=seg_map_file,
-            path_in_repo=repo_seg_maps_path,
-            repo_id=REPO_ID,
-            repo_type="dataset",
-            silent=True
-        )
-        os.remove(sam_path)
-        os.remove(feats_file)
-        os.remove(seg_map_file)
-
-        # Crea dei file vuoti (0 byte) con lo stesso nome
-        # Questo permette a `get_last_completed_stem` di funzionare per il resume!
-        open(sam_path, 'w').close()
-        open(feats_file, 'w').close()
-        open(seg_map_file, 'w').close()
-    except Exception as e:
-        print(f"\n[Errore Upload HF] Fallito l'upload per {file_stem}: {e}")
+    np.save(save_path + '_feats.npy', feat_result['feats'])
+    np.save(save_path + '_seg_map.npy', feat_result['seg_maps'])
 
 def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> str | None:
     """
@@ -119,7 +76,7 @@ def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> s
     npy_files.sort(key=natural_sort_key)
     last_file = npy_files[-1]
     # Strip ".npy" suffix to recover the original stem
-    stem = last_file[: -len(".npy")]
+    stem = last_file[: -len("_seg_map.npy")]
     return stem
 
 
@@ -247,6 +204,20 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
             path = os.path.join(PREPROCESS_DIR, directory, subdir)
             if os.path.exists(path):
                 shutil.rmtree(path)
+        scene_local_path = os.path.join(save_folder, directory)
+        scene_repo_path = directory  # path dentro il repo
+
+        try:
+            api.upload_folder(
+                folder_path=scene_local_path,
+                path_in_repo=scene_repo_path,
+                repo_id=REPO_ID,
+                repo_type="dataset",
+            )
+            print(f"[HF] Upload completato: {directory}")
+            shutil.rmtree(scene_local_path)  # libera disco dopo upload
+        except Exception as e:
+            print(f"[HF] Errore upload {directory}: {e}")
 
     for q in queues:
         q.put(SENTINEL)
