@@ -15,6 +15,10 @@ from utils.CLIP import OpenCLIPNetworkConfig, OpenCLIPNetwork
 from utils.feature_extractor import FeatureExtractor
 from utils.sam import SAMProcessor
 
+import os
+import numpy as np
+from huggingface_hub import HfApi
+
 PREPROCESS_DIR = "/tmp/dataset/frames"
 SENTINEL = None
 
@@ -36,6 +40,67 @@ def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result)
     #np.save(save_path + '_feat_map.npy', feat_result['feat_map'])
 
 
+
+REPO_ID = "dugoalberto/Scannet_Clip"
+api = HfApi(token="..")
+
+def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result):
+    """Pure I/O, runs in saver thread. Salva su disco e fa l'upload su Hugging Face."""
+
+    sam_path = os.path.join(save_folder, directory, 'SAM', file_stem + '.npy')
+    os.makedirs(os.path.dirname(sam_path), exist_ok=True)
+    np.save(sam_path, sam_result)
+
+    feat_dir = os.path.join(save_folder, directory, 'features', encoder)
+    os.makedirs(feat_dir, exist_ok=True)
+    save_path = os.path.join(feat_dir, file_stem)
+
+    feats_file = save_path + '_feats.npy'
+    seg_map_file = save_path + '_seg_map.npy'
+
+    np.save(feats_file, feat_result['feats'])
+    np.save(seg_map_file, feat_result['seg_maps'])
+
+    repo_sam_path = f"{directory}/SAM/{file_stem}.npy"
+    repo_feats_path = f"{directory}/features/{encoder}/{file_stem}_feats.npy"
+    repo_seg_maps_path = f"{directory}/features/{encoder}/{file_stem}_seg_map.npy"
+
+    try:
+        # Carica il file SAM
+        api.upload_file(
+            path_or_fileobj=sam_path,
+            path_in_repo=repo_sam_path,
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            silent=True
+        )
+        # Carica il file Feats
+        api.upload_file(
+            path_or_fileobj=feats_file,
+            path_in_repo=repo_feats_path,
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            silent=True
+        )
+        api.upload_file(
+            path_or_fileobj=seg_map_file,
+            path_in_repo=repo_seg_maps_path,
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            silent=True
+        )
+        os.remove(sam_path)
+        os.remove(feats_file)
+        os.remove(seg_map_file)
+
+        # Crea dei file vuoti (0 byte) con lo stesso nome
+        # Questo permette a `get_last_completed_stem` di funzionare per il resume!
+        open(sam_path, 'w').close()
+        open(feats_file, 'w').close()
+        open(seg_map_file, 'w').close()
+    except Exception as e:
+        print(f"\n[Errore Upload HF] Fallito l'upload per {file_stem}: {e}")
+
 def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> str | None:
     """
     Returns the file stem of the last successfully processed frame for this scene,
@@ -46,7 +111,7 @@ def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> s
     if not os.path.exists(feat_dir):
         return None
 
-    npy_files = [f for f in os.listdir(feat_dir) if f.endswith("feat_map.npy")]
+    npy_files = [f for f in os.listdir(feat_dir) if f.endswith("_seg_map.npy")]
     if not npy_files:
         return None
 
@@ -89,7 +154,7 @@ def gpu_worker(worker_id: int, device_id: int, queue: Queue, sam_ckpt_path: str,
     print(f"[Worker {worker_id}] Ready on {device}")
 
     while True:
-		item = queue.get()
+        item = queue.get()
         if item is SENTINEL:
             save_queue.put(None)  # shutdown saver
             saver.join()
@@ -176,7 +241,7 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
             image = cv2.resize(image, (new_w, new_h))
             file_stem = file_name.split('.')[0]
             queues[worker_idx % worker_count].put((directory, file_stem, image, new_w, new_h))
-	    worker_idx += 1
+        worker_idx += 1
 
         for subdir in ["tiles", "SAM_vis", "SAM"]:
             path = os.path.join(PREPROCESS_DIR, directory, subdir)
@@ -194,15 +259,15 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_path', type=str, required=True)
     parser.add_argument('--resolution', type=int, default=-1)
     parser.add_argument('--sam_ckpt_path', type=str,
-                        default="/dss/dsshome1/03/di38wok/Projects/Preproccessing/ckpt/sam_vit_h_4b8939.pth")
+                        default="/mnt/home/albertodugo/Projects/Preproccessing/ckpt/sam_vit_h_4b8939.pth")
     parser.add_argument('--encoder', type=str, default="clip")
     parser.add_argument('--empty_bg', action='store_true', default=False)
     parser.add_argument('--num_gpus', type=int, default=1)
     parser.add_argument('--workers_per_gpu', type=int, default=1)
     args = parser.parse_args()
 
-    save_folder = "/tmp/dataset/frames"
-    dataset_dir = "/tmp/dataset/frames"
+    save_folder = "/tmp/dataset/frames/frames"
+    dataset_dir = "/tmp/dataset/frames/frames"
     data_list = sorted(os.listdir(dataset_dir))
 
     print(f"Launching with {args.num_gpus} GPU(s), {args.workers_per_gpu} worker(s) per GPU")
