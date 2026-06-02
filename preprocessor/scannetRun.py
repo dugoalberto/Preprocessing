@@ -15,6 +15,10 @@ from utils.CLIP import OpenCLIPNetworkConfig, OpenCLIPNetwork
 from utils.feature_extractor import FeatureExtractor
 from utils.sam import SAMProcessor
 
+import os
+import numpy as np
+from huggingface_hub import HfApi
+
 PREPROCESS_DIR = "/tmp/dataset/frames"
 SENTINEL = None
 
@@ -35,6 +39,24 @@ def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result)
     np.save(save_path + '_seg_map.npy', feat_result['seg_maps'])
     #np.save(save_path + '_feat_map.npy', feat_result['feat_map'])
 
+
+
+REPO_ID = "dugoalberto/Scannet_Clip"
+api = HfApi(token="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")
+
+def do_save(save_folder, directory, file_stem, encoder, sam_result, feat_result):
+    """Pure I/O, runs in saver thread. Salva solo su disco."""
+
+    sam_path = os.path.join(save_folder, directory, 'SAM', file_stem + '.npy')
+    os.makedirs(os.path.dirname(sam_path), exist_ok=True)
+    np.save(sam_path, sam_result)
+
+    feat_dir = os.path.join(save_folder, directory, 'features', encoder)
+    os.makedirs(feat_dir, exist_ok=True)
+    save_path = os.path.join(feat_dir, file_stem)
+
+    np.save(save_path + '_feats.npy', feat_result['feats'])
+    np.save(save_path + '_seg_map.npy', feat_result['seg_maps'])
 
 def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> str | None:
     """
@@ -182,6 +204,20 @@ def io_producer(data_list: list, dataset_dir: str, save_folder: str,
             path = os.path.join(PREPROCESS_DIR, directory, subdir)
             if os.path.exists(path):
                 shutil.rmtree(path)
+        scene_local_path = os.path.join(save_folder, directory)
+        scene_repo_path = directory  # path dentro il repo
+
+        try:
+            api.upload_folder(
+                folder_path=scene_local_path,
+                path_in_repo=scene_repo_path,
+                repo_id=REPO_ID,
+                repo_type="dataset",
+            )
+            print(f"[HF] Upload completato: {directory}")
+            shutil.rmtree(scene_local_path)  # libera disco dopo upload
+        except Exception as e:
+            print(f"[HF] Errore upload {directory}: {e}")
 
     for q in queues:
         q.put(SENTINEL)
@@ -201,7 +237,7 @@ if __name__ == '__main__':
     parser.add_argument('--workers_per_gpu', type=int, default=1)
     args = parser.parse_args()
 
-    save_folder = "/dss/dsshome1/03/di38wok/dataset/preprocessed"
+    save_folder = "/tmp/dataset/frames"
     dataset_dir = "/tmp/dataset/frames"
     data_list = sorted(os.listdir(dataset_dir))
 
