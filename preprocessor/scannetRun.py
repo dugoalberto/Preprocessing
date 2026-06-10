@@ -26,8 +26,7 @@ PREPROCESS_DIR = "/tmp/dataset/frames"
 SENTINEL = None
 
 REPO_ID = "dugoalberto/Scannet_Clip"
-HF_TOKEN = "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"
-
+HF_TOKEN = "-"
 
 def scene_already_processed(api: HfApi, repo_id: str, scene_name: str) -> bool:
     """Check if both 'features' and 'SAM' dirs exist for this scene on HF."""
