@@ -19,6 +19,6 @@ apt-get update && apt-get install -y tar
 cd "$PROJECT_DIR/preprocessor"
 
 echo "Avvio scannetRun.py con dataset: $FRAMES_DIR"
-$PYTHON_EXEC scannetRun.py --dataset_path="$FRAMES_DIR"
+$PYTHON_EXEC scannetRun.py --dataset_path="$FRAMES_DIR" --resolution 256 --workers_per_gpu 4
 
 echo "Job completato!"
