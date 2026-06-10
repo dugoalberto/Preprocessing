@@ -20,8 +20,8 @@ from huggingface_hub import hf_hub_download
 # CONFIG
 # ──────────────────────────────────────────────
 REPO_ID   = "dugoalberto/Scannet_Clip"
-SCENE     = "00777c41d4"
-FRAME     = "frame_000000"
+SCENE     = "00a231a370"
+FRAME     = "frame_000016"
 H, W      = 256, 256                     # target spatial resolution
 OUT_DIR   = f"/mnt/home/albertodugo/Projects/Preproccessing/Datasets/{SCENE}"
 
