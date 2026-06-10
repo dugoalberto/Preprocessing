@@ -25,7 +25,7 @@ PREPROCESS_DIR = "/tmp/dataset/frames"
 SENTINEL = None
 
 REPO_ID = "dugoalberto/Scannet_Clip"
-HF_TOKEN = "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"
+HF_TOKEN = "-"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
