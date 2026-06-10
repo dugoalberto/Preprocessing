@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from PIL import Image
 from einops import rearrange
-from torch.utils._contextlib import F
 
 
 def rescale(
@@ -19,7 +18,6 @@ def rescale(
 
 def center_crop(
         image: torch.Tensor,  # [c, h_in, w_in]
-        intrinsics: torch.Tensor,  # [3, 3]   normalised (cx/w, cy/h in [0,1])
         shape: tuple[int, int]
 ) -> tuple:
     h_in, w_in = image.shape[-2:]
@@ -31,19 +29,11 @@ def center_crop(
     # crop image
     image = image[..., row: row + h_out, col: col + w_out]
 
-    # update intrinsics (normalised convention: fx=fx_px/w, cx=cx_px/w)
-    intr = intrinsics.clone()
-    intr[0, 0] *= w_in / w_out  # fx
-    intr[1, 1] *= h_in / h_out  # fy
-    intr[0, 2] = (intr[0, 2] * w_in - col) / w_out  # cx
-    intr[1, 2] = (intr[1, 2] * h_in - row) / h_out  # cy
-
-    return image, intr
+    return image
 
 
 def rescale_and_crop(
         image: torch.Tensor,  # [3, h_in, w_in]  float32 [0,1]
-        intrinsics: torch.Tensor,  # [3, 3]
         shape: tuple[int, int],
 ) -> tuple:
     h_in, w_in = image.shape[-2:]
@@ -60,12 +50,4 @@ def rescale_and_crop(
 
     # rescale image
     image = rescale(image, (h_sc, w_sc))
-
-    # rescale intrinsics for the isotropic scale step
-    intr = intrinsics.clone()
-    intr[0, 0] *= w_sc / w_in  # fx
-    intr[1, 1] *= h_sc / h_in  # fy
-    intr[0, 2] *= w_sc / w_in  # cx
-    intr[1, 2] *= h_sc / h_in  # cy
-
-    return center_crop(image, intr, shape)
+    return center_crop(image, shape)

@@ -16,7 +16,8 @@ from utils.CLIP import OpenCLIPNetworkConfig, OpenCLIPNetwork
 from utils.feature_extractor import FeatureExtractor
 from utils.sam import SAMProcessor
 
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub.utils import EntryNotFoundError
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
@@ -25,42 +26,44 @@ PREPROCESS_DIR = "/tmp/dataset/frames"
 SENTINEL = None
 
 REPO_ID = "dugoalberto/Scannet_Clip"
-HF_TOKEN = "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"
+HF_TOKEN = "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"
 
 
+def scene_already_processed(api: HfApi, repo_id: str, scene_name: str) -> bool:
+    """Check if both 'features' and 'SAM' dirs exist for this scene on HF."""
+    for subdir in ["features"]:
+        try:
+            files = api.list_repo_tree(
+                repo_id=repo_id,
+                repo_type="dataset",
+                path_in_repo=f"{scene_name}/{subdir}",
+            )
+            if not any(True for _ in files):
+                return False
+        except EntryNotFoundError:
+            return False
+    return True
+
+
+def download_scene(api: HfApi, repo_id: str, scene_name: str, local_dir: str) -> str:
+    """
+    Downloads only the iphone/rgb frames for a scene into local_dir/scene_name.
+    """
+    os.makedirs(local_dir, exist_ok=True)
+    snapshot_download(
+        repo_id=repo_id,
+        repo_type="dataset",
+        local_dir=local_dir,          # <-- save_folder, not save_folder/scene_name
+        allow_patterns=[f"{scene_name}/iphone/rgb/*"],
+        token=HF_TOKEN,
+    )
+    return os.path.join(local_dir, scene_name)
 # ─────────────────────────────────────────────────────────────────────────────
 # Utilities
 # ─────────────────────────────────────────────────────────────────────────────
 def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower()
             for text in re.split(r'([0-9]+)', s)]
-
-
-def load_intrinsics(intrinsic_path: str, orig_w: int, orig_h: int) -> torch.Tensor:
-    mat = np.loadtxt(intrinsic_path)   # [4, 4]
-    fx, fy = mat[0, 0], mat[1, 1]
-    cx, cy = mat[0, 2], mat[1, 2]
-    return torch.tensor([
-        [fx / orig_w,  0.0,          cx / orig_w],
-        [0.0,          fy / orig_h,  cy / orig_h],
-        [0.0,          0.0,          1.0         ],
-    ], dtype=torch.float32)
-
-
-def save_intrinsics(intrinsic_path: str, intrinsics_norm: torch.Tensor,
-                    new_w: int, new_h: int) -> None:
-    intr = intrinsics_norm
-    fx = intr[0, 0].item() * new_w
-    fy = intr[1, 1].item() * new_h
-    cx = intr[0, 2].item() * new_w
-    cy = intr[1, 2].item() * new_h
-    mat = np.array([
-        [fx,  0.,  cx,  0.],
-        [0.,  fy,  cy,  0.],
-        [0.,  0.,  1.,  0.],
-        [0.,  0.,  0.,  1.],
-    ])
-    np.savetxt(intrinsic_path, mat, fmt="%.6f")
 
 
 def get_last_completed_stem(save_folder: str, directory: str, encoder: str) -> str | None:
@@ -108,10 +111,6 @@ def saver_thread(save_queue: thread_queue.Queue):
 # HuggingFace upload thread  (runs in the MAIN process, async per scene)
 # ─────────────────────────────────────────────────────────────────────────────
 def hf_upload_thread(upload_queue: thread_queue.Queue):
-    """
-    Consumes (scene_local_path, scene_repo_path) tuples from the queue
-    and uploads them to HuggingFace one at a time, without blocking the producer.
-    """
     api = HfApi(token=HF_TOKEN)
     while True:
         item = upload_queue.get()
@@ -124,8 +123,13 @@ def hf_upload_thread(upload_queue: thread_queue.Queue):
                 path_in_repo=scene_repo_path,
                 repo_id=REPO_ID,
                 repo_type="dataset",
+                allow_patterns=["features/**", "SAM/**"],
             )
             print(f"[HF] Upload done: {scene_repo_path}", flush=True)
+
+            # ── Step 5: clean up local scene to free disk ─────────────────
+            shutil.rmtree(scene_local_path, ignore_errors=True)
+            print(f"[HF] Cleaned up local: {scene_local_path}", flush=True)
         except Exception as e:
             print(f"[HF] Upload ERROR for {scene_repo_path}: {e}", flush=True)
 
@@ -188,22 +192,31 @@ def gpu_worker(worker_id: int, device_id: int, in_queue: Queue,
 # ─────────────────────────────────────────────────────────────────────────────
 from concurrent.futures import ThreadPoolExecutor
 
-def io_producer(data_list, dataset_dir, save_folder, args, gpu_queues, upload_queue):
+# signature
+def io_producer(data_list, save_folder, args, gpu_queues, upload_queue):
+    api = HfApi(token=HF_TOKEN)
     num_gpus = len(gpu_queues)
     shape = (args.resolution, args.resolution)
     h_out, w_out = shape
     frame_idx = 0
 
     for directory in tqdm(data_list, desc="Scenes", ascii=True):
-        img_folder     = os.path.join(dataset_dir, directory, "iphone", "rgb")
-        intrinsic_path = os.path.join(dataset_dir, directory, "intrinsic", "intrinsic_color.txt")
 
+        # ── Step 1: already processed on HF? ─────────────────────────────
+        if scene_already_processed(api, REPO_ID, directory):
+            print(f"[HF] '{directory}' already processed, skipping.")
+            continue
+
+        download_scene(api, REPO_ID, directory, save_folder)
+
+        img_folder = os.path.join(save_folder, directory, "iphone", "rgb")
         if not os.path.exists(img_folder):
+            print(f"[Warning] No rgb folder found for '{directory}', skipping.")
             continue
 
         directory_data_list = sorted(os.listdir(img_folder), key=natural_sort_key)
 
-        # ── Resume ───────────────────────────────────────────────────────────
+        # ── Resume (partial local processing) ────────────────────────────
         last_done = get_last_completed_stem(save_folder, directory, args.encoder)
         if last_done is not None:
             stems = [f.split('.')[0] for f in directory_data_list]
@@ -211,65 +224,55 @@ def io_producer(data_list, dataset_dir, save_folder, args, gpu_queues, upload_qu
                 resume_idx = stems.index(last_done) + 1
                 print(f"[Resume] '{directory}': skipping {resume_idx} frames")
                 directory_data_list = directory_data_list[resume_idx:]
+
         if not directory_data_list:
+            # Already fully processed locally, just upload
             upload_queue.put((os.path.join(save_folder, directory), directory))
             continue
 
-        # ── Intrinsics ───────────────────────────────────────────────────────
+        # ── Intrinsics ────────────────────────────────────────────────────
         first_frame = cv2.imread(os.path.join(img_folder, directory_data_list[0]))
-        orig_h, orig_w = first_frame.shape[:2]
-        if os.path.exists(intrinsic_path):
-            intrinsics_norm = load_intrinsics(intrinsic_path, orig_w, orig_h)
-            scale = max(h_out / orig_h, w_out / orig_w)
-            h_sc, w_sc = round(orig_h * scale), round(orig_w * scale)
-            row, col = (h_sc - h_out) // 2, (w_sc - w_out) // 2
-            intr = intrinsics_norm.clone()
-            intr[0, 0] *= w_sc / orig_w;  intr[0, 2] *= w_sc / orig_w
-            intr[1, 1] *= h_sc / orig_h;  intr[1, 2] *= h_sc / orig_h
-            intr[0, 2] = (intr[0, 2] * w_sc - col) / w_out
-            intr[1, 2] = (intr[1, 2] * h_sc - row) / h_out
-            intr[0, 0] *= w_sc / w_out
-            intr[1, 1] *= h_sc / h_out
-            save_intrinsics(intrinsic_path, intr, w_out, h_out)
-            intr_in = intrinsics_norm
-        else:
-            intr_in = torch.eye(3)
-
         res_file = os.path.join(save_folder, "resolution.txt")
         if not os.path.exists(res_file):
             with open(res_file, "w") as f:
                 f.write(f"{w_out} {h_out}\n")
 
-        # ── Parallel frame loading ────────────────────────────────────────────
+        # ── Step 3: enqueue frames for GPU processing ─────────────────────
         def load_frame(file_name):
             bgr = cv2.imread(os.path.join(img_folder, file_name))
             if bgr is None:
                 return None, None
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             img_t = rearrange(torch.from_numpy(rgb / 255.0).float(), "h w c -> c h w")
-            img_crop, _ = rescale_and_crop(img_t, intr_in, shape)
+            img_crop = rescale_and_crop(img_t, shape)
             img_out = (rearrange(img_crop, "c h w -> h w c").numpy() * 255).astype(np.uint8)
             img_out = cv2.cvtColor(img_out, cv2.COLOR_RGB2BGR)
             return file_name.split('.')[0], img_out
 
         print(f"[Producer] '{directory}': {len(directory_data_list)} frames")
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
-            futures = {pool.submit(load_frame, fn): fn for fn in directory_data_list}
-            for future in tqdm(futures, desc=f"  {directory}", ascii=True):
-                stem, img_out = future.result()
-                if img_out is None:
-                    continue
-                gpu_queues[frame_idx % num_gpus].put(
-                    (directory, stem, img_out, w_out, h_out)
-                )
-                frame_idx += 1
+        LOAD_WORKERS = 4  # fewer parallel readers
+        BATCH_SIZE = 32  # how many frames to hold in RAM at once
 
+        with ThreadPoolExecutor(max_workers=LOAD_WORKERS) as pool:
+            all_files = list(directory_data_list)
+            for batch_start in range(0, len(all_files), BATCH_SIZE):
+                batch = all_files[batch_start: batch_start + BATCH_SIZE]
+                futures = {pool.submit(load_frame, fn): fn for fn in batch}
+                for future in tqdm(as_completed(futures), total=len(batch),
+                                   desc=f"  {directory} [{batch_start}+]", ascii=True):
+                    stem, img_out = future.result()
+                    if img_out is None:
+                        continue
+                    gpu_queues[frame_idx % num_gpus].put(
+                        (directory, stem, img_out, w_out, h_out)
+                    )
+                    frame_idx += 1        # ── Steps 4 & 5: upload features+SAM back, then clean up ──────────
         upload_queue.put((os.path.join(save_folder, directory), directory))
 
     for q in gpu_queues:
         q.put(SENTINEL)
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
@@ -277,7 +280,6 @@ if __name__ == '__main__':
     set_start_method('spawn')
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_path',    type=str, required=True)
     parser.add_argument('--resolution',      type=int, default=256)
     parser.add_argument('--sam_ckpt_path',   type=str,
                         default="/mnt/home/albertodugo/Projects/Preproccessing/ckpt/sam_vit_h_4b8939.pth")
@@ -288,14 +290,21 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     save_folder = "/tmp/dataset/frames"
-    dataset_dir = "/tmp/dataset/frames"
-    data_list   = sorted(os.listdir(dataset_dir))
+    os.makedirs(save_folder, exist_ok=True)
+
+    # ── Fetch scene list directly from HuggingFace ───────────────────────
+    api = HfApi(token=HF_TOKEN)
+    all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset")
+    data_list = sorted({
+        path.split("/")[0]
+        for path in all_files
+        if "/" in path  # skip any root-level files
+    })
+    print(f"Found {len(data_list)} scenes on HuggingFace: {REPO_ID}")
 
     total_workers = args.num_gpus * args.workers_per_gpu
     print(f"Launching {args.num_gpus} GPU(s) × {args.workers_per_gpu} worker(s) = {total_workers} workers total")
 
-    # One queue per GPU, shared by all workers on that GPU.
-    # Large maxsize so the producer can stay ahead of the workers.
     queue_maxsize = args.workers_per_gpu * 16
     gpu_queues = [Queue(maxsize=queue_maxsize) for _ in range(args.num_gpus)]
 
@@ -318,13 +327,12 @@ if __name__ == '__main__':
             workers.append(p)
 
     # Run producer (blocks until all frames are enqueued)
-    io_producer(data_list, dataset_dir, save_folder, args, gpu_queues, upload_queue)
+    # in __main__
+    io_producer(data_list, save_folder, args, gpu_queues, upload_queue)
 
-    # Wait for all GPU workers to finish
     for p in workers:
         p.join()
 
-    # Drain the upload queue before exiting
     upload_queue.put(None)
     uploader.join()
 
